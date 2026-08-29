@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: money-transfer
+
+  datasource:
+    url: jdbc:sqlserver://localhost:1433;databaseName=bankdb;encrypt=true;trustServerCertificate=true
+    username: sa
+    password: YourStrong!Passw0rd
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+
+  jpa:
+    hibernate:
+      ddl-auto: none          # ห้ามให้ Hibernate สร้าง/แก้ตารางเอง (ต้องใช้ Liquibase เท่านั้น)
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.xml
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+server:
+  port: 8080

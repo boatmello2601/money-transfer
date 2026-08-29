@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- ===================== 1. ตาราง account ===================== -->
+    <changeSet id="001-create-account-table" author="you">
+        <sql>
+            CREATE TABLE account (
+            id BIGINT IDENTITY(1,1) NOT NULL,
+            account_number VARCHAR(20) NOT NULL,
+            owner_name NVARCHAR(120) NOT NULL,
+            currency CHAR(3) NOT NULL,
+            balance DECIMAL(19,4) NOT NULL CONSTRAINT DF_account_balance DEFAULT (0),
+            status VARCHAR(10) NOT NULL CONSTRAINT DF_account_status DEFAULT ('ACTIVE'),
+            created_at DATETIME2(3) NOT NULL CONSTRAINT DF_account_created DEFAULT (SYSUTCDATETIME()),
+            updated_at DATETIME2(3) NOT NULL CONSTRAINT DF_account_updated DEFAULT (SYSUTCDATETIME()),
+            CONSTRAINT PK_account PRIMARY KEY (id),
+            CONSTRAINT UQ_account_number UNIQUE (account_number),
+            CONSTRAINT CK_account_balance CHECK (balance >= 0),
+            CONSTRAINT CK_account_status CHECK (status IN ('ACTIVE','FROZEN','CLOSED'))
+            );
+        </sql>
+        <rollback>
+            <sql>DROP TABLE account;</sql>
+        </rollback>
+    </changeSet>
+
+    <!-- ===================== 2. ตาราง transfer ===================== -->
+    <changeSet id="002-create-transfer-table" author="you">
+        <sql>
+            CREATE TABLE transfer (
+            id BIGINT IDENTITY(1,1) NOT NULL,
+            idempotency_key VARCHAR(64) NOT NULL,
+            from_account_id BIGINT NOT NULL,
+            to_account_id BIGINT NOT NULL,
+            amount DECIMAL(19,4) NOT NULL,
+            currency CHAR(3) NOT NULL,
+            status VARCHAR(12) NOT NULL,
+            request_hash VARCHAR(64) NOT NULL,
+            failure_reason NVARCHAR(255) NULL,
+            created_at DATETIME2(3) NOT NULL CONSTRAINT DF_transfer_created DEFAULT (SYSUTCDATETIME()),
+            CONSTRAINT PK_transfer PRIMARY KEY (id),
+            CONSTRAINT UQ_transfer_idem UNIQUE (idempotency_key),
+            CONSTRAINT FK_transfer_from FOREIGN KEY (from_account_id) REFERENCES account(id),
+            CONSTRAINT FK_transfer_to FOREIGN KEY (to_account_id) REFERENCES account(id),
+            CONSTRAINT CK_transfer_amount CHECK (amount > 0),
+            CONSTRAINT CK_transfer_status CHECK (status IN ('PENDING','COMPLETED','FAILED'))
+            );
+        </sql>
+        <rollback>
+            <sql>DROP TABLE transfer;</sql>
+        </rollback>
+    </changeSet>
+
+    <!-- ===================== 3. ตาราง ledger_entry ===================== -->
+    <changeSet id="003-create-ledger-entry-table" author="you">
+        <sql>
+            CREATE TABLE ledger_entry (
+            id BIGINT IDENTITY(1,1) NOT NULL,
+            account_id BIGINT NOT NULL,
+            transfer_id BIGINT NULL,
+            entry_type VARCHAR(6) NOT NULL,
+            amount DECIMAL(19,4) NOT NULL,
+            balance_after DECIMAL(19,4) NOT NULL,
+            created_at DATETIME2(3) NOT NULL CONSTRAINT DF_ledger_created DEFAULT (SYSUTCDATETIME()),
+            CONSTRAINT PK_ledger PRIMARY KEY (id),
+            CONSTRAINT FK_ledger_account FOREIGN KEY (account_id) REFERENCES account(id),
+            CONSTRAINT FK_ledger_transfer FOREIGN KEY (transfer_id) REFERENCES transfer(id),
+            CONSTRAINT CK_ledger_type CHECK (entry_type IN ('DEBIT','CREDIT')),
+            CONSTRAINT CK_ledger_amount CHECK (amount > 0)
+            );
+
+            CREATE INDEX IX_ledger_account ON ledger_entry (account_id, created_at DESC);
+        </sql>
+        <rollback>
+            <sql>DROP TABLE ledger_entry;</sql>
+        </rollback>
+    </changeSet>
+
+    <!-- ===================== 4. ตาราง outbox_event ===================== -->
+    <changeSet id="004-create-outbox-event-table" author="you">
+        <sql>
+            CREATE TABLE outbox_event (
+            id BIGINT IDENTITY(1,1) NOT NULL,
+            aggregate_type VARCHAR(50) NOT NULL,
+            aggregate_id VARCHAR(50) NOT NULL,
+            event_type VARCHAR(50) NOT NULL,
+            payload NVARCHAR(MAX) NOT NULL,
+            status VARCHAR(10) NOT NULL CONSTRAINT DF_outbox_status DEFAULT ('PENDING'),
+            created_at DATETIME2(3) NOT NULL CONSTRAINT DF_outbox_created DEFAULT (SYSUTCDATETIME()),
+            published_at DATETIME2(3) NULL,
+            CONSTRAINT PK_outbox PRIMARY KEY (id),
+            CONSTRAINT CK_outbox_st CHECK (status IN ('PENDING','PUBLISHED','FAILED'))
+            );
+        </sql>
+        <rollback>
+            <sql>DROP TABLE outbox_event;</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
