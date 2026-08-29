@@ -39,7 +39,7 @@ public class AccountService {
         account.setStatus(AccountStatus.ACTIVE);
         account.setCreatedAt(Instant.now());
         account.setUpdatedAt(Instant.now());
-        fdsafdsafdsafdsafdsafdsafdfdsa
+        
 
         AccountEntity saved = accountRepository.save(account);
 
