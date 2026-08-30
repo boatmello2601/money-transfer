@@ -1,8 +1,6 @@
 package com.bank.money_transfer.controller;
 
-import com.bank.money_transfer.dto.AccountResponse;
-import com.bank.money_transfer.dto.BalanceResponse;
-import com.bank.money_transfer.dto.CreateAccountRequest;
+import com.bank.money_transfer.dto.*;
 import com.bank.money_transfer.service.AccountService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -33,5 +31,10 @@ public class AccountController {
     @GetMapping("/{id}/balance")
     public ResponseEntity<BalanceResponse> getBalance(@PathVariable Long id) {
         return ResponseEntity.ok(accountService.getBalance(id));
+    }
+
+    @PostMapping("/{id}/deposit")
+    public ResponseEntity<DepositResponse> deposit(@PathVariable Long id, @RequestBody AmountRequest request) {
+        return ResponseEntity.ok(accountService.deposit(id, request.getAmount()));
     }
 }
