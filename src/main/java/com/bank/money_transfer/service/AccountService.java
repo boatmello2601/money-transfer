@@ -130,6 +130,48 @@ public class AccountService {
         }
     }
 
+    @Transactional
+    public DepositResponse withdraw(Long accountId, BigDecimal amount) {
+        validateAmount(amount);
+
+        String lockToken = acquireLockOrThrow(accountId);
+        try {
+            AccountEntity account = accountRepository.findByIdForUpdate(accountId)
+                    .orElseThrow(() -> new AccountNotFoundException("Account " + accountId + " not found"));
+
+            if (account.getStatus() != AccountStatus.ACTIVE) {
+                throw new BusinessRuleException(
+                        "https://errors.bank.local/account-not-active",
+                        "Account not active", 422,
+                        "Account " + accountId + " is not ACTIVE");
+            }
+
+            if (account.getBalance().compareTo(amount) < 0) {
+                throw new BusinessRuleException(
+                        "https://errors.bank.local/insufficient-funds",
+                        "Insufficient funds", 422,
+                        "Account " + accountId + " has balance " + account.getBalance() + " but requested " + amount);
+            }
+
+            BigDecimal newBalance = account.getBalance().subtract(amount);
+            account.setBalance(newBalance);
+            account.setUpdatedAt(Instant.now());
+            accountRepository.save(account);
+
+            LedgerEntry entry = new LedgerEntry();
+            entry.setAccountId(accountId);
+            entry.setEntryType(EntryType.DEBIT);
+            entry.setAmount(amount);
+            entry.setBalanceAfter(newBalance);
+            entry.setCreatedAt(Instant.now());
+            LedgerEntry savedEntry = ledgerEntryRepository.save(entry);
+
+            return new DepositResponse(accountId, newBalance, savedEntry.getId());
+        } finally {
+            accountLockService.releaseLock(accountId, lockToken);
+        }
+    }
+
     private AccountResponse toResponse(AccountEntity account) {
         return new AccountResponse(
                 account.getId(),
