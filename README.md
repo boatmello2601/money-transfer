@@ -3,23 +3,14 @@
 Backend service สำหรับระบบโอนเงินระหว่างบัญชี พัฒนาด้วย Java 21 + Spring Boot 3.3.x
 
 ## 1. วิธีรันตั้งแต่ศูนย์
-
-### 1.1 รัน infrastructure (SQL Server, Redis, IBM MQ)
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
-รอจนทุก container ขึ้นสถานะ `healthy` (ใช้ `docker compose ps -a` เช็คได้) — ขั้นตอนนี้จะสร้าง database `bankdb`, queue `TRANSFER.COMPLETED`, และตั้งสิทธิ์ที่จำเป็นให้อัตโนมัติ
+คำสั่งเดียวจบ — จะได้ app + SQL Server + Redis + IBM MQ ครบ พร้อม auto-provisioning ทั้งหมด (database, queue, permissions) รอจนทุก container ขึ้นสถานะ `healthy`/`Up` (เช็คได้ด้วย `docker compose ps`) แอปจะพร้อมใช้งานที่ `http://localhost:8080`
 
-### 1.2 รันแอปพลิเคชัน
-> **หมายเหตุสำคัญ:** ขณะนี้ตัวแอป Spring Boot **ยังไม่ได้ containerize** (ยังไม่มี `Dockerfile` ของตัวแอปเอง) จึงต้องรันแยกจาก `docker compose up` ด้วยคำสั่ง:
-```bash
-mvn spring-boot:run
-```
-หรือรันผ่าน IDE (เปิด `MoneyTransferApplication.java` แล้วกด Run)
+**ครั้งแรกจะใช้เวลานานหน่อย** (ต้อง build image ของแอปเอง + ดึง image SQL Server/IBM MQ) ครั้งถัดไปจะเร็วขึ้นมากเพราะมี cache
 
-แอปจะรันที่ `http://localhost:8080`
-
-### 1.3 ปิดระบบ
+### ปิดระบบ
 ```bash
 docker compose down        # ปิด container แต่เก็บข้อมูลไว้ (volume ยังอยู่)
 docker compose down -v     # ปิด + ลบข้อมูลทั้งหมด (เริ่มนับหนึ่งใหม่)
@@ -106,7 +97,7 @@ curl -i http://localhost:8080/api/v1/transfers/1
 
 | หมวด | รายการ |
 |---|---|
-| Infrastructure | Docker Compose: SQL Server, Redis, IBM MQ พร้อม auto-provisioning (database, queue, permissions) |
+| Infrastructure | Dockerfile ของแอป + wiring เข้า docker-compose.yml ครบ — `docker compose up -d --build` ได้ app + sqlserver + redis + ibmmq |
 | Database | Liquibase migration ครบ 4 ตาราง (account, transfer, ledger_entry, outbox_event) |
 | Account API | `POST /accounts`, `GET /accounts/{id}`, `GET /accounts/{id}/balance`, `POST /accounts/{id}/deposit`, `POST /accounts/{id}/withdraw` |
 | Transfer API | `POST /transfers`, `GET /transfers/{id}` |
@@ -124,7 +115,6 @@ curl -i http://localhost:8080/api/v1/transfers/1
 |---|---|---|
 | API | `GET /accounts/{id}/transactions` (statement) | หมดเวลา |
 | API | `PATCH /accounts/{id}/status` (freeze/close) | หมดเวลา |
-| Containerization | Dockerfile ของตัวแอป Spring Boot เอง — `docker compose up` ตอนนี้ยังไม่พาแอปขึ้นมาด้วย (ต้องรันแยกด้วย `mvn spring-boot:run`) | หมดเวลา |
 | Test | Integration test ด้วย Testcontainers | เขียนไว้แล้วแต่เจอปัญหา Testcontainers หา Docker Desktop บนเครื่อง Windows ไม่เจอ (`Could not find a valid Docker environment`) แก้ไม่ทันจึงตัดออกจาก scope |
 | Test | Concurrency test (หลาย thread ฝาก/ถอนพร้อมกัน) | หมดเวลา — เคยทดสอบ manual ผ่าน Postman Collection Runner (rate limiting) แต่ไม่ได้เขียนเป็น automated test |
 | Test | Idempotency test แบบ automated | เคยทดสอบผ่าน Postman/curl manual แล้วได้ผลถูกต้อง แต่ไม่ได้เขียนเป็น JUnit test |
