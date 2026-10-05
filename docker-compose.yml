@@ -72,6 +72,33 @@ services:
     entrypoint: [ "sh", "/grant-auth.sh" ]
     restart: "no"
 
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bank-app
+    depends_on:
+      sqlserver-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      ibmmq-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_DATASOURCE_URL: "jdbc:sqlserver://sqlserver:1433;databaseName=bankdb;encrypt=true;trustServerCertificate=true"
+      SPRING_DATASOURCE_USERNAME: sa
+      SPRING_DATASOURCE_PASSWORD: "YourStrong!Passw0rd"
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      IBM_MQ_QUEUEMANAGER: QM1
+      IBM_MQ_CHANNEL: DEV.APP.SVRCONN
+      IBM_MQ_CONNNAME: "ibmmq(1414)"
+      IBM_MQ_USER: app
+      IBM_MQ_PASSWORD: "AppPass123"
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
 volumes:
   sqlserver-data:
   ibmmq-data:
