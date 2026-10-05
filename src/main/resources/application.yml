@@ -26,3 +26,11 @@ spring:
 
 server:
   port: 8080
+
+ibm:
+  mq:
+    queueManager: QM1
+    channel: DEV.APP.SVRCONN
+    connName: localhost(1414)
+    user: app
+    password: AppPass123

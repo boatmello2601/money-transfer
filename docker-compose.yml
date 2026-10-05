@@ -39,5 +39,39 @@ services:
       -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'bankdb') CREATE DATABASE bankdb"
     restart: "no"
 
+  ibmmq:
+    image: icr.io/ibm-messaging/mq:latest
+    container_name: bank-ibmmq
+    environment:
+      LICENSE: "accept"
+      MQ_QMGR_NAME: "QM1"
+      MQ_APP_PASSWORD: "AppPass123"
+      MQ_ADMIN_PASSWORD: "AdminPass123"
+    ports:
+      - "1414:1414"
+      - "9443:9443"
+    volumes:
+      - ibmmq-data:/mnt/mqm
+      - ./mqsc/20-config.mqsc:/etc/mqm/20-config.mqsc:ro
+    healthcheck:
+      test: [ "CMD", "chkmqready" ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  ibmmq-init:
+    image: docker:cli
+    container_name: bank-ibmmq-init
+    depends_on:
+      ibmmq:
+        condition: service_healthy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./mqsc/grant-auth.sh:/grant-auth.sh:ro
+    entrypoint: [ "sh", "/grant-auth.sh" ]
+    restart: "no"
+
 volumes:
   sqlserver-data:
+  ibmmq-data:
