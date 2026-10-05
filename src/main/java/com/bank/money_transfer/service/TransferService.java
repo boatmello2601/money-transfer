@@ -1,22 +1,31 @@
 package com.bank.money_transfer.service;
 
+import com.bank.money_transfer.dto.TransferCompletedEvent;
 import com.bank.money_transfer.dto.TransferRequest;
 import com.bank.money_transfer.dto.TransferResponse;
 import com.bank.money_transfer.entity.AccountEntity;
 import com.bank.money_transfer.entity.LedgerEntry;
+import com.bank.money_transfer.entity.OutboxEvent;
 import com.bank.money_transfer.entity.Transfer;
 import com.bank.money_transfer.enumFile.AccountStatus;
 import com.bank.money_transfer.enumFile.EntryType;
+import com.bank.money_transfer.enumFile.OutboxStatus;
 import com.bank.money_transfer.enumFile.TransferStatus;
 import com.bank.money_transfer.exception.AccountNotFoundException;
 import com.bank.money_transfer.exception.BusinessRuleException;
+import com.bank.money_transfer.exception.RateLimitExceededException;
+import com.bank.money_transfer.exception.TransferNotFoundException;
 import com.bank.money_transfer.helper.TransferOutcome;
 import com.bank.money_transfer.lock.AccountLockService;
+import com.bank.money_transfer.lock.TransferRateLimiter;
 import com.bank.money_transfer.repository.AccountRepository;
 import com.bank.money_transfer.repository.LedgerEntryRepository;
+import com.bank.money_transfer.repository.OutboxEventRepository;
 import com.bank.money_transfer.repository.TransferRepository;
+import org.springframework.boot.json.JsonParseException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -24,6 +33,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class TransferService {
@@ -33,21 +43,36 @@ public class TransferService {
     private final LedgerEntryRepository ledgerEntryRepository;
     private final AccountLockService accountLockService;
     private final TransferFailureRecorder failureRecorder;
+    private final TransferRateLimiter rateLimiter;
+    private final OutboxEventRepository outboxEventRepository;
+    private final ObjectMapper objectMapper;
 
     public TransferService(AccountRepository accountRepository,
                            TransferRepository transferRepository,
                            LedgerEntryRepository ledgerEntryRepository,
                            AccountLockService accountLockService,
-                           TransferFailureRecorder failureRecorder) {
+                           TransferFailureRecorder failureRecorder, TransferRateLimiter rateLimiter, OutboxEventRepository outboxEventRepository, ObjectMapper objectMapper) {
         this.accountRepository = accountRepository;
         this.transferRepository = transferRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.accountLockService = accountLockService;
         this.failureRecorder = failureRecorder;
+        this.rateLimiter = rateLimiter;
+        this.outboxEventRepository = outboxEventRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
     public TransferOutcome transfer(TransferRequest request, String idempotencyKey) {
+        // check rateLimit
+        if (request.getFromAccountId() != null) {
+            TransferRateLimiter.RateLimitResult rateLimitResult = rateLimiter.checkAndIncrement(request.getFromAccountId());
+            if (rateLimitResult.isLimited()) {
+                throw new RateLimitExceededException(
+                        "เกิน rate limit การโอนของบัญชีนี้ กรุณาลองใหม่ภายหลัง",
+                        rateLimitResult.getRetryAfterSeconds());
+            }
+        }
 
         String requestHash = computeHash(request);
 
@@ -144,6 +169,8 @@ public class TransferService {
             credit.setCreatedAt(Instant.now());
             ledgerEntryRepository.save(credit);
 
+            publishOutboxEvent(savedTransfer);
+
             return new TransferOutcome(toResponse(savedTransfer), true);
 
         } finally {
@@ -151,6 +178,40 @@ public class TransferService {
                 accountLockService.releaseLock(secondId, lockToken2);
             }
             accountLockService.releaseLock(firstId, lockToken1);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public TransferResponse getTransfer(Long id) {
+        Transfer transfer = transferRepository.findById(id)
+                .orElseThrow(() -> new TransferNotFoundException("Transfer " + id + " not found"));
+        return toResponse(transfer);
+    }
+
+    private void publishOutboxEvent(Transfer transfer) {
+        try {
+            TransferCompletedEvent event = new TransferCompletedEvent(
+                    UUID.randomUUID().toString(),
+                    "TransferCompleted",
+                    transfer.getId(),
+                    transfer.getFromAccountId(),
+                    transfer.getToAccountId(),
+                    transfer.getAmount(),
+                    transfer.getCurrency(),
+                    Instant.now()
+            );
+            String payload = objectMapper.writeValueAsString(event);
+
+            OutboxEvent outboxEvent = new OutboxEvent();
+            outboxEvent.setAggregateType("Transfer");
+            outboxEvent.setAggregateId(String.valueOf(transfer.getId()));
+            outboxEvent.setEventType("TransferCompleted");
+            outboxEvent.setPayload(payload);
+            outboxEvent.setStatus(OutboxStatus.PENDING);
+            outboxEvent.setCreatedAt(Instant.now());
+            outboxEventRepository.save(outboxEvent);
+        } catch (JsonParseException e) {
+            throw new IllegalStateException("Failed to serialize outbox event", e);
         }
     }
 

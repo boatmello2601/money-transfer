@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -65,5 +66,28 @@ public class GlobalExceptionHandler {
         pd.setInstance(URI.create(request.getRequestURI()));
         pd.setProperty("traceId", MDC.get(RequestIdFilter.MDC_KEY));
         return pd;
+    }
+
+    @ExceptionHandler(TransferNotFoundException.class)
+    public ProblemDetail handleTransferNotFound(TransferNotFoundException ex, HttpServletRequest request) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        pd.setType(URI.create("https://errors.bank.local/transfer-not-found"));
+        pd.setTitle("Transfer not found");
+        pd.setInstance(URI.create(request.getRequestURI()));
+        pd.setProperty("traceId", MDC.get(RequestIdFilter.MDC_KEY));
+        return pd;
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ProblemDetail> handleRateLimit(RateLimitExceededException ex, HttpServletRequest request) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+        pd.setType(URI.create("https://errors.bank.local/rate-limited"));
+        pd.setTitle("Too many requests");
+        pd.setInstance(URI.create(request.getRequestURI()));
+        pd.setProperty("traceId", MDC.get(RequestIdFilter.MDC_KEY));
+
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(pd);
     }
 }

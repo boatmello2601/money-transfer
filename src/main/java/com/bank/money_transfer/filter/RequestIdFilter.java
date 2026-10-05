@@ -23,13 +23,13 @@ public class RequestIdFilter extends OncePerRequestFilter {
             requestId = UUID.randomUUID().toString();
         }
 
-        MDC.put(MDC_KEY, requestId);          // เก็บไว้ให้ที่อื่นในระบบเรียกใช้ได้
-        response.setHeader(HEADER_NAME, requestId);  // ใส่กลับไปใน response header เสมอ
+        MDC.put(MDC_KEY, requestId);
+        response.setHeader(HEADER_NAME, requestId);
 
         try {
-            filterChain.doFilter(request, response);  // ปล่อยให้ request ไหลต่อไป Controller ตามปกติ
+            filterChain.doFilter(request, response);
         } finally {
-            MDC.remove(MDC_KEY);  // ล้างทิ้งกันหลุดไปปนกับ request ถัดไป (thread ถูก reuse)
+            MDC.remove(MDC_KEY);
         }
     }
 }

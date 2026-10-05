@@ -41,4 +41,9 @@ public class TransferController {
         }
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<TransferResponse> getTransfer(@PathVariable Long id) {
+        return ResponseEntity.ok(transferService.getTransfer(id));
+    }
 }
